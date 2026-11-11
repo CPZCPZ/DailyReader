@@ -89,10 +89,13 @@ export default function EpubReader({
           | { spineItems?: unknown[]; length?: number }
           | undefined;
         const spineLen = spine?.spineItems?.length ?? spine?.length ?? 1;
+        const fallback = ((loc.start.index + 1) / Math.max(1, spineLen)) * 100;
+        // epub.js 的 percentage 依赖 locations.generate，未生成时可能恒为 0，
+        // 以 spine 序号近似展示更直观
         const percent =
-          loc.start.percentage !== undefined
+          loc.start.percentage && loc.start.percentage > 0
             ? loc.start.percentage * 100
-            : ((loc.start.index + 1) / Math.max(1, spineLen)) * 100;
+            : fallback;
         cbRef.current({
           type: 'cfi',
           value: loc.start.cfi,

@@ -21,17 +21,28 @@ export interface SyncResult {
   removed?: number;
 }
 
+/** 同步阶段回调（页面展示进度用） */
+export type SyncProgress = (stage: string) => void;
+
 /**
  * 整书架同步：
+ * 0. ensureRepo：校验数据仓库形状（防误用代码仓库），空仓库自动初始化
  * 1. 拉取远端书架，合并（远端删除的书本地移除；本地新书上传）
  * 2. 拉取全部远端进度，与本地 LWW 合并，双向落盘
  * 3. 推送合并后的书架
+ * 单本书上传失败不中断整轮，汇总到结果。
  */
-export async function syncNow(): Promise<SyncResult> {
+export async function syncNow(
+  onProgress: SyncProgress = () => {},
+): Promise<SyncResult> {
   const provider = getSync();
   if (!provider) return { ok: false, message: '请先在设置页配置 GitHub 同步' };
 
   try {
+    onProgress('校验数据仓库…');
+    await provider.ensureRepo();
+
+    onProgress('拉取远端书架…');
     const localBooks = await getAllBooks();
     const remoteShelf = (await provider.pullShelf()) ?? [];
     const { merged, remoteDeletedIds } = mergeShelves(localBooks, remoteShelf);
@@ -43,15 +54,25 @@ export async function syncNow(): Promise<SyncResult> {
 
     // 上传本地新书（本地有文件且尚未同步过的）
     let uploaded = 0;
-    for (const book of merged) {
-      if (book.synced) continue;
+    const failedIds = new Set<string>();
+    const failedMsgs: string[] = [];
+    const toUpload = merged.filter((b) => !b.synced);
+    for (let i = 0; i < toUpload.length; i++) {
+      const book = toUpload[i];
       const file = await getBookFile(book.id);
       if (!file) continue; // 远端来的书本地无文件，跳过
-      await provider.uploadBook(book, file);
-      uploaded++;
+      onProgress(`上传《${book.title}》（${i + 1}/${toUpload.length}）…`);
+      try {
+        await provider.uploadBook(book, file);
+        uploaded++;
+      } catch (err) {
+        console.warn(`《${book.title}》上传失败`, err);
+        failedIds.add(book.id);
+        failedMsgs.push(`《${book.title}》：${friendlyError(err)}`);
+      }
     }
 
-    // 进度合并
+    onProgress('合并阅读进度…');
     const remoteProgress = await provider.pullAllProgress();
     const localProgress = await getAllProgressLocal();
     const shelfIds = new Set(merged.map((b) => b.id));
@@ -61,7 +82,8 @@ export async function syncNow(): Promise<SyncResult> {
       await saveProgressLocal(id, winner);
       if (
         localProgress[id] &&
-        (!remoteProgress[id] || localProgress[id].updatedAt > (remoteProgress[id]?.updatedAt ?? 0))
+        (!remoteProgress[id] ||
+          localProgress[id].updatedAt > (remoteProgress[id]?.updatedAt ?? 0))
       ) {
         // 本地较新 → 推远端
         await provider.pushProgress(id, localProgress[id]);
@@ -71,18 +93,35 @@ export async function syncNow(): Promise<SyncResult> {
       if (meta) meta.progress = winner;
     }
 
-    // 推送书架（以合并结果为准，全部标记 synced）
-    await provider.pushShelf(
-      merged.map((b) => ({ ...b, synced: true })),
-    );
-    for (const b of merged) {
-      await saveBookMeta({ ...b, synced: true });
+    // 推送书架（以合并结果为准；上传失败的书保持未同步标记，下次重试）
+    onProgress('推送书架…');
+    const mergedForPush = merged.map((b) => ({
+      ...b,
+      synced: !failedIds.has(b.id),
+    }));
+    await provider.pushShelf(mergedForPush);
+    for (const b of mergedForPush) {
+      await saveBookMeta(b);
     }
 
     useSettings.getState().setLastSyncAt(Date.now());
+
+    const parts = [
+      `上传 ${uploaded} 本`,
+      remoteDeletedIds.length ? `远端删除 ${remoteDeletedIds.length} 本` : '',
+      `进度 ${shelfIds.size} 本已对齐`,
+    ].filter(Boolean);
+    if (failedMsgs.length) {
+      return {
+        ok: false,
+        message: `同步部分完成：${parts.join('，')}。失败 ${failedMsgs.length} 本：${failedMsgs.join('；')}`,
+        uploaded,
+        removed: remoteDeletedIds.length,
+      };
+    }
     return {
       ok: true,
-      message: `同步完成：上传 ${uploaded} 本，远端删除 ${remoteDeletedIds.length} 本，进度 ${shelfIds.size} 本已对齐`,
+      message: `同步完成：${parts.join('，')}`,
       uploaded,
       removed: remoteDeletedIds.length,
     };

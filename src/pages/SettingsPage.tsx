@@ -54,7 +54,9 @@ export default function SettingsPage() {
 
   async function handleFullSync() {
     setStatus({ kind: 'info', text: '正在全量同步…' });
-    const result = await syncNow();
+    const result = await syncNow((stage) =>
+      setStatus({ kind: 'info', text: stage }),
+    );
     await useShelf.getState().load();
     setStatus({ kind: result.ok ? 'ok' : 'error', text: result.message });
   }
@@ -104,7 +106,7 @@ export default function SettingsPage() {
               />
             </label>
             <label className="field">
-              <span>数据仓库名</span>
+              <span>数据仓库名（专用仓库，默认 reader-data）</span>
               <input
                 value={settings.repo}
                 placeholder="reader-data"
@@ -112,6 +114,13 @@ export default function SettingsPage() {
                   settings.setSync({ repo: e.target.value.trim() })
                 }
               />
+              <span className="mt-1 block text-xs font-normal text-slate-400">
+                书籍和进度存在这个专用私有仓库里。
+                <b className="text-amber-600 dark:text-amber-400">
+                  不要填 DailyReader
+                </b>
+                （那是代码仓库，应用会拒绝同步以防误写）。
+              </span>
             </label>
           </div>
 
@@ -181,18 +190,19 @@ export default function SettingsPage() {
                 ，新建 Token
               </li>
               <li>
-                Repository access 选 <b>Only select repositories</b>（或先选 All
-                等仓库建好再改）；权限需要：
-                <b> Contents → Read and write</b>（创建仓库还需
+                Repository access 选 <b>Only select repositories</b>，把{' '}
+                <b>reader-data</b> 加进去（点「创建数据仓库」之前仓库还不存在时，可先临时选
+                All repositories，建好后再改回来）；权限需要：
+                <b> Contents → Read and write</b>（自动创建仓库还需
                 Administration → Read and write）
               </li>
               <li>
-                复制 Token 填到上面，填好用户名和仓库名（默认 reader-data），
-                点「测试连接」；若仓库不存在，点「创建数据仓库」
+                复制 Token 填到上面，用户名填你的 GitHub 用户名，仓库名保持{' '}
+                <b>reader-data</b>，点「测试连接」——应提示「数据仓库就绪」或「可点击创建」
               </li>
               <li>
-                在其他设备打开本页面 <b>部署地址</b>
-                ，填同一个 Token 即可同步
+                点「创建数据仓库」→「立即全量同步」。在其他设备打开应用{' '}
+                <b>线上地址</b>，填同一个 Token 即可同步
               </li>
             </ol>
             <p className="mt-2 text-xs text-slate-400">

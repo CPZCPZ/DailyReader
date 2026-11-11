@@ -47,7 +47,9 @@ export default function ShelfPage() {
   async function handleSync() {
     setSyncing(true);
     setToast({ kind: 'info', text: '正在同步…' });
-    const result = await syncNow();
+    const result = await syncNow((stage) =>
+      setToast({ kind: 'info', text: stage }),
+    );
     await load();
     setSyncing(false);
     setToast({ kind: result.ok ? 'ok' : 'error', text: result.message });
