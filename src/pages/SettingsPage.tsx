@@ -275,6 +275,9 @@ export default function SettingsPage() {
 
         <footer className="pb-8 text-center text-xs text-slate-400">
           DailyReader · 数据在你自己的 GitHub 仓库 · AGPL 之外的自研实现
+          <br />
+          版本 <code className="text-slate-500">{__APP_VERSION__}</code>
+          （如需排障请提供此号）
         </footer>
       </main>
     </div>

@@ -14,5 +14,16 @@ createRoot(document.getElementById('root')!).render(
 
 // PWA Service Worker（vite-plugin-pwa 自动更新）
 import('virtual:pwa-register').then(({ registerSW }) => {
-  registerSW({ immediate: false });
+  registerSW({
+    immediate: false,
+    // autoUpdate 下新 SW 装好后当前页面仍跑旧代码，打标记让书架页提示刷新
+    onNeedRefresh() {
+      try {
+        localStorage.setItem('dr-sw-pending', '1');
+        window.dispatchEvent(new Event('dr-sw-pending'));
+      } catch {
+        /* ignore */
+      }
+    },
+  });
 });

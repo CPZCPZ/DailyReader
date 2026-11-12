@@ -2,13 +2,26 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'node:fs';
 
 // GitHub Pages 部署在 https://<user>.github.io/<repo>/ 下，base 必须与仓库名一致。
 // 本地开发或自定义域名时可用环境变量 BASE_PATH=/ 覆盖。
 const repoName = process.env.BASE_PATH ?? '/DailyReader/';
 
+// 版本号：npm version + 构建时间，注入前端用于设置页展示与远程排障
+const pkg = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
+const appVersion = `${pkg.version}@${new Date()
+  .toISOString()
+  .replace(/[-:T]/g, '')
+  .slice(0, 12)}`;
+
 export default defineConfig({
   base: repoName,
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     react(),
     tailwindcss(),

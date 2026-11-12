@@ -18,6 +18,16 @@ export default function ShelfPage() {
   const [dragOver, setDragOver] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [swPending, setSwPending] = useState(
+    () => localStorage.getItem('dr-sw-pending') === '1',
+  );
+
+  // Service Worker 后台更新完成 → 提示刷新
+  useEffect(() => {
+    const onPending = () => setSwPending(true);
+    window.addEventListener('dr-sw-pending', onPending);
+    return () => window.removeEventListener('dr-sw-pending', onPending);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -45,6 +55,12 @@ export default function ShelfPage() {
   }
 
   async function handleSync() {
+    // 未配置 token/仓库：直接带去设置页（手机上 toast 易被忽略）
+    if (!isSyncConfigured()) {
+      setToast({ kind: 'info', text: '尚未配置同步，正在前往设置页…' });
+      navigate('/settings');
+      return;
+    }
     setSyncing(true);
     setToast({ kind: 'info', text: '正在同步…' });
     const result = await syncNow((stage) =>
@@ -69,6 +85,22 @@ export default function ShelfPage() {
         if (e.dataTransfer.files.length) void handleFiles(e.dataTransfer.files);
       }}
     >
+      {/* 新版本提示条（SW 已在后台更新完成） */}
+      {swPending && (
+        <div className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-amber-500 px-4 py-2 text-sm text-white">
+          <span>新版本已就绪</span>
+          <button
+            className="rounded bg-white/20 px-3 py-1 font-medium hover:bg-white/30"
+            onClick={() => {
+              localStorage.removeItem('dr-sw-pending');
+              location.reload();
+            }}
+          >
+            立即刷新
+          </button>
+        </div>
+      )}
+
       {/* 顶栏 */}
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-700 dark:bg-slate-800/90">
         <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3">

@@ -1,7 +1,7 @@
 {
   "name": "daily-reader",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "跨平台同步阅读器：GitHub Pages 前端 + GitHub 私有仓库同步，支持 PDF/DOCX/DOC/PPT/PPTX/MD/TXT/HTML/EPUB",
   "scripts": {
