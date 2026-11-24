@@ -1,63 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../store/useSettings';
-import { GitHubSyncProvider } from '../sync/GitHubSyncProvider';
 import { useShelf } from '../store/useShelf';
-import { syncNow } from '../sync/orchestrator';
+import { connectAndSync } from '../sync/connect';
 import { fmtBytes } from './ShelfPage';
 import { storageUsage } from '../storage/db';
-import { useEffect } from 'react';
 
 export default function SettingsPage() {
   const settings = useSettings();
   const [status, setStatus] = useState<
     { kind: 'ok' | 'error' | 'info'; text: string } | null
   >(null);
-  const [testing, setTesting] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  async function handleTest() {
-    setTesting(true);
-    setStatus(null);
-    const provider = new GitHubSyncProvider({
-      token: settings.token,
-      owner: settings.owner,
-      repo: settings.repo,
-    });
-    const result = await provider.testConnection();
-    setStatus({ kind: result.ok ? 'ok' : 'error', text: result.message });
-    setTesting(false);
-  }
-
-  async function handleCreateRepo() {
-    setCreating(true);
-    setStatus(null);
-    try {
-      const provider = new GitHubSyncProvider({
-        token: settings.token,
-        owner: settings.owner,
-        repo: settings.repo,
-      });
-      await provider.ensureRepo();
-      setStatus({
-        kind: 'ok',
-        text: `仓库 ${settings.owner}/${settings.repo} 已就绪（已存在则不重复创建）`,
-      });
-    } catch (err) {
-      setStatus({
-        kind: 'error',
-        text: '创建失败：' + (err as Error).message,
-      });
-    }
-    setCreating(false);
-  }
-
-  async function handleFullSync() {
-    setStatus({ kind: 'info', text: '正在全量同步…' });
-    const result = await syncNow((stage) =>
+  async function handleConnect() {
+    setBusy(true);
+    setStatus({ kind: 'info', text: '正在连接…' });
+    const result = await connectAndSync((stage) =>
       setStatus({ kind: 'info', text: stage }),
     );
     await useShelf.getState().load();
+    setBusy(false);
     setStatus({ kind: result.ok ? 'ok' : 'error', text: result.message });
   }
 
@@ -137,24 +100,10 @@ export default function SettingsPage() {
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               className="btn-primary"
-              onClick={() => void handleTest()}
-              disabled={testing || !settings.token || !settings.owner}
+              onClick={() => void handleConnect()}
+              disabled={busy || !settings.token || !settings.owner || !settings.repo}
             >
-              {testing ? '测试中…' : '测试连接'}
-            </button>
-            <button
-              className="btn-ghost"
-              onClick={() => void handleCreateRepo()}
-              disabled={creating || !settings.token || !settings.owner}
-            >
-              {creating ? '创建中…' : '创建数据仓库'}
-            </button>
-            <button
-              className="btn-ghost"
-              onClick={() => void handleFullSync()}
-              disabled={!settings.token || !settings.owner}
-            >
-              立即全量同步
+              {busy ? '连接中…' : '连接并同步'}
             </button>
           </div>
 
@@ -198,11 +147,11 @@ export default function SettingsPage() {
               </li>
               <li>
                 复制 Token 填到上面，用户名填你的 GitHub 用户名，仓库名保持{' '}
-                <b>reader-data</b>，点「测试连接」——应提示「数据仓库就绪」或「可点击创建」
+                <b>reader-data</b>
               </li>
               <li>
-                点「创建数据仓库」→「立即全量同步」。在其他设备打开应用{' '}
-                <b>线上地址</b>，填同一个 Token 即可同步
+                点「连接并同步」。在其他设备打开应用的{' '}
+                <b>线上地址</b>，填同一个 Token，打开页面后会自动把书拉下来
               </li>
             </ol>
             <p className="mt-2 text-xs text-slate-400">
@@ -261,6 +210,20 @@ export default function SettingsPage() {
               className="w-full"
             />
           </label>
+          <label className="field">
+            <span>页边距：{settings.margin}px</span>
+            <input
+              type="range"
+              min={0}
+              max={48}
+              step={2}
+              value={settings.margin}
+              onChange={(e) =>
+                settings.setReader({ margin: Number(e.target.value) })
+              }
+              className="w-full"
+            />
+          </label>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
               type="checkbox"
@@ -268,6 +231,32 @@ export default function SettingsPage() {
               onChange={(e) => settings.setReader({ serif: e.target.checked })}
             />
             衬线字体（宋体风格，适合长文）
+          </label>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={settings.indent}
+              onChange={(e) => settings.setReader({ indent: e.target.checked })}
+            />
+            中文首行缩进
+          </label>
+          <label className="field mt-3">
+            <span>EPUB 翻页方式</span>
+            <div className="flex gap-2">
+              {(['paginated', 'scrolled'] as const).map((flow) => (
+                <button
+                  key={flow}
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-sm ${
+                    settings.epubFlow === flow
+                      ? 'border-blue-500 bg-blue-50 font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
+                      : 'border-slate-200 text-slate-500 dark:border-slate-600 dark:text-slate-400'
+                  }`}
+                  onClick={() => settings.setReader({ epubFlow: flow })}
+                >
+                  {flow === 'paginated' ? '分页' : '滚动'}
+                </button>
+              ))}
+            </div>
           </label>
         </section>
 

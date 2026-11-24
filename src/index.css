@@ -77,6 +77,43 @@
   margin: 0 0 1em;
   text-indent: 0;
 }
+.reader-indent p {
+  text-indent: 2em;
+}
+.reader-indent h1,
+.reader-indent h2,
+.reader-indent h3,
+.reader-indent h4,
+.reader-indent .doc-notice {
+  text-indent: 0;
+}
+mark.hl,
+.hl-pdf {
+  border-radius: 2px;
+}
+.hl-yellow { background: #fde68a; }
+.hl-green { background: #bbf7d0; }
+.hl-blue { background: #bfdbfe; }
+.hl-pink { background: #fbcfe8; }
+.dark mark.hl-yellow { background: #854d0e; color: #fef3c7; }
+.dark mark.hl-green { background: #166534; color: #dcfce7; }
+.dark mark.hl-blue { background: #1e3a8a; color: #dbeafe; }
+.dark mark.hl-pink { background: #9d174d; color: #fce7f3; }
+
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  z-index: 2;
+}
+.pdf-text-layer span {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+}
 .reader-prose h1,
 .reader-prose h2,
 .reader-prose h3,

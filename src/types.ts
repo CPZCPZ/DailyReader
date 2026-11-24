@@ -67,6 +67,72 @@ export interface BookMeta {
   synced?: boolean;
   /** 最近一次进度（本地镜像，用于书架展示） */
   progress?: ReadingProgress;
+  /** 所属分类；空表示未分类 */
+  collectionId?: string;
+  /** 分类归属的更新时间，合并时与阅读进度分开比较 */
+  metaUpdatedAt?: number;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  /** 墓碑：同步后其他设备据此删除，不从文件里抹掉 */
+  deletedAt?: number;
+}
+
+/** 书内位置。href 只用于 EPUB 目录跳转。 */
+export interface BookLocator {
+  type: ProgressType | 'href';
+  value: string | number;
+  /** 0-100，用来判断「当前页是否已有书签」 */
+  percent?: number;
+  quote?: string;
+  prefix?: string;
+  suffix?: string;
+}
+
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink';
+
+export interface Bookmark {
+  id: string;
+  bookId: string;
+  label: string;
+  locator: BookLocator;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
+export interface HighlightRect {
+  /** 相对页面盒子的 0-1 坐标，PDF 叠高亮用 */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Highlight {
+  id: string;
+  bookId: string;
+  color: HighlightColor;
+  text: string;
+  note?: string;
+  locator: BookLocator;
+  rects?: HighlightRect[];
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
+export interface MarksFile {
+  bookmarks: Bookmark[];
+  highlights: Highlight[];
+}
+
+export function emptyMarks(): MarksFile {
+  return { bookmarks: [], highlights: [] };
 }
 
 export interface ProgressFile {

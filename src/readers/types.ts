@@ -1,4 +1,10 @@
-import type { ProgressType, ReadingProgress } from '../types';
+import type {
+  BookLocator,
+  Highlight,
+  HighlightRect,
+  ProgressType,
+  ReadingProgress,
+} from '../types';
 import type { ReaderSettings } from '../store/useSettings';
 
 /** Reader 上报的进度核心字段；device/updatedAt 由 ReaderPage 补全 */
@@ -6,6 +12,25 @@ export interface ProgressDelta {
   type: ProgressType;
   value: string | number;
   percent: number;
+}
+
+export interface TocEntry {
+  id: string;
+  label: string;
+  locator: BookLocator;
+}
+
+export interface TextSelectionInfo {
+  text: string;
+  locator: BookLocator;
+  rects?: HighlightRect[];
+  clientX: number;
+  clientY: number;
+}
+
+export interface ReaderNav {
+  prev: () => void;
+  next: () => void;
 }
 
 /**
@@ -20,4 +45,21 @@ export interface ReaderProps {
   initialProgress?: ReadingProgress;
   settings: ReaderSettings;
   onProgress: (p: ProgressDelta) => void;
+  highlights?: Highlight[];
+  jumpTo?: { nonce: number; locator: BookLocator } | null;
+  onToc?: (items: TocEntry[]) => void;
+  onTextSelect?: (sel: TextSelectionInfo | null) => void;
+  onSurfaceClick?: (zone: 'center') => void;
+  onBindNav?: (nav: ReaderNav | null) => void;
+}
+
+export function readerExtras(props: ReaderProps) {
+  return {
+    highlights: props.highlights,
+    jumpTo: props.jumpTo,
+    onToc: props.onToc,
+    onTextSelect: props.onTextSelect,
+    onSurfaceClick: props.onSurfaceClick,
+    onBindNav: props.onBindNav,
+  };
 }

@@ -3,11 +3,19 @@ import { persist } from 'zustand/middleware';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+export type EpubFlow = 'paginated' | 'scrolled';
+
 export interface ReaderSettings {
   /** 阅读区字号（px），作用于 epub/docx/md/txt/html */
   fontSize: number;
   lineHeight: number;
   serif: boolean;
+  /** 额外页边距（px） */
+  margin: number;
+  /** 正文首行缩进，适合中文长文 */
+  indent: boolean;
+  /** EPUB 分页或连续滚动 */
+  epubFlow: EpubFlow;
 }
 
 interface SettingsState extends ReaderSettings {
@@ -41,6 +49,9 @@ export const useSettings = create<SettingsState>()(
       fontSize: 18,
       lineHeight: 1.8,
       serif: false,
+      margin: 8,
+      indent: false,
+      epubFlow: 'paginated',
       token: '',
       owner: '',
       repo: 'reader-data',
@@ -59,6 +70,9 @@ export const useSettings = create<SettingsState>()(
         fontSize: s.fontSize,
         lineHeight: s.lineHeight,
         serif: s.serif,
+        margin: s.margin,
+        indent: s.indent,
+        epubFlow: s.epubFlow,
         token: s.token,
         owner: s.owner,
         repo: s.repo,

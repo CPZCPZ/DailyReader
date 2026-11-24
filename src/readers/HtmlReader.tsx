@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { ScrolledHtmlReader } from './ScrolledHtmlReader';
-import type { ReaderProps } from './types';
+import { readerExtras, type ReaderProps } from './types';
 import { Loading } from './Loading';
 
 /** HTML 阅读器：解析完整文档取 body，DOMPurify 清洗后滚动阅读 */
-export default function HtmlReader({
-  data,
-  initialProgress,
-  settings,
-  onProgress,
-}: ReaderProps) {
+export default function HtmlReader(props: ReaderProps) {
+  const { data, initialProgress, settings, onProgress } = props;
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +46,7 @@ export default function HtmlReader({
       onScrollPercent={(percent) =>
         onProgress({ type: 'percent', value: percent, percent })
       }
+      {...readerExtras(props)}
     />
   );
 }

@@ -1,8 +1,11 @@
 import { Octokit } from '@octokit/rest';
 import type {
   BookMeta,
+  Collection,
+  MarksFile,
   ReadingProgress,
 } from '../types';
+import { emptyMarks } from '../types';
 import type {
   ConnectionTestResult,
   SyncConfig,
@@ -552,5 +555,54 @@ export class GitHubSyncProvider implements SyncProvider {
       `chore(progress): ${bookId}`,
     );
     return true;
+  }
+
+  async pullCollections(): Promise<Collection[] | null> {
+    const text = await this.readUtf8File('collections.json');
+    if (text === null) return null;
+    try {
+      const arr = JSON.parse(text) as unknown;
+      return Array.isArray(arr) ? (arr as Collection[]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async pushCollections(items: Collection[]): Promise<void> {
+    await this.commitFiles(
+      [
+        {
+          path: 'collections.json',
+          content: utf8ToBase64(JSON.stringify(items, null, 2)),
+        },
+      ],
+      'chore(collections): update',
+    );
+  }
+
+  async pullMarks(): Promise<MarksFile | null> {
+    const text = await this.readUtf8File('marks.json');
+    if (text === null) return null;
+    try {
+      const data = JSON.parse(text) as MarksFile;
+      return {
+        bookmarks: Array.isArray(data.bookmarks) ? data.bookmarks : [],
+        highlights: Array.isArray(data.highlights) ? data.highlights : [],
+      };
+    } catch {
+      return emptyMarks();
+    }
+  }
+
+  async pushMarks(marks: MarksFile): Promise<void> {
+    await this.commitFiles(
+      [
+        {
+          path: 'marks.json',
+          content: utf8ToBase64(JSON.stringify(marks)),
+        },
+      ],
+      'chore(marks): update',
+    );
   }
 }

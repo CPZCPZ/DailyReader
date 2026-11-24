@@ -4,7 +4,13 @@ import type { ReaderProps } from './types';
 
 export { ScrolledHtmlReader } from './ScrolledHtmlReader';
 export { Loading } from './Loading';
-export type { ReaderProps, ProgressDelta } from './types';
+export type {
+  ReaderProps,
+  ProgressDelta,
+  TocEntry,
+  TextSelectionInfo,
+  ReaderNav,
+} from './types';
 
 /** 懒加载映射：每个 Reader 独立 chunk，避免首屏加载全部解析库 */
 const readerMap: Record<

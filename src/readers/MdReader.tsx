@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { ScrolledHtmlReader } from './ScrolledHtmlReader';
-import type { ReaderProps } from './types';
+import { readerExtras, type ReaderProps } from './types';
 import { Loading } from './Loading';
 
 /** Markdown 阅读器：markdown-it 渲染（支持内嵌 HTML，经 DOMPurify 清洗） */
-export default function MdReader({
-  data,
-  initialProgress,
-  settings,
-  onProgress,
-}: ReaderProps) {
+export default function MdReader(props: ReaderProps) {
+  const { data, initialProgress, settings, onProgress } = props;
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +46,7 @@ export default function MdReader({
       onScrollPercent={(percent) =>
         onProgress({ type: 'percent', value: percent, percent })
       }
+      {...readerExtras(props)}
     />
   );
 }

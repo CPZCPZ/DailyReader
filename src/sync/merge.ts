@@ -1,4 +1,12 @@
-import type { BookMeta, ReadingProgress } from '../types';
+import type {
+  BookMeta,
+  Bookmark,
+  Collection,
+  Highlight,
+  MarksFile,
+  ReadingProgress,
+} from '../types';
+import { emptyMarks } from '../types';
 
 /**
  * 书架合并（纯函数，便于单元测试）。
@@ -39,12 +47,59 @@ function pickBook(l: BookMeta, r: BookMeta): BookMeta {
   const lp = l.progress?.updatedAt ?? 0;
   const rp = r.progress?.updatedAt ?? 0;
   const base = lp >= rp ? l : r;
+  const lt = l.metaUpdatedAt ?? 0;
+  const rt = r.metaUpdatedAt ?? 0;
+  const collectionSource = lt === 0 && rt === 0 ? base : lt >= rt ? l : r;
   return {
     ...base,
     cover: l.cover ?? r.cover,
+    collectionId: collectionSource.collectionId,
+    metaUpdatedAt: Math.max(lt, rt) || undefined,
     // 远端存在即视为已同步
     synced: true,
     progress: pickProgress(l.progress, r.progress) ?? base.progress,
+  };
+}
+
+interface Stamp {
+  id: string;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
+/** 按 id 取并集，updatedAt 新者胜出（含删除墓碑）。时间相同保留本地。 */
+export function mergeById<T extends Stamp>(local: T[], remote: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of remote) map.set(item.id, item);
+  for (const item of local) {
+    const other = map.get(item.id);
+    if (!other || item.updatedAt >= other.updatedAt) map.set(item.id, item);
+  }
+  return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export function mergeCollections(
+  local: Collection[],
+  remote: Collection[],
+): Collection[] {
+  return mergeById(local, remote);
+}
+
+export function mergeMarks(local: MarksFile, remote: MarksFile): MarksFile {
+  return {
+    bookmarks: mergeById<Bookmark>(local.bookmarks ?? [], remote.bookmarks ?? []),
+    highlights: mergeById<Highlight>(
+      local.highlights ?? [],
+      remote.highlights ?? [],
+    ),
+  };
+}
+
+export function normalizeMarks(file: MarksFile | null | undefined): MarksFile {
+  if (!file) return emptyMarks();
+  return {
+    bookmarks: file.bookmarks ?? [],
+    highlights: file.highlights ?? [],
   };
 }
 

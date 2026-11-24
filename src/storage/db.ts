@@ -1,5 +1,11 @@
 import localforage from 'localforage';
-import type { BookMeta, ReadingProgress } from '../types';
+import type {
+  BookMeta,
+  Collection,
+  MarksFile,
+  ReadingProgress,
+} from '../types';
+import { emptyMarks } from '../types';
 
 /** 书籍元数据（书架） */
 export const booksStore = localforage.createInstance({
@@ -18,6 +24,21 @@ export const progressStore = localforage.createInstance({
   name: 'dailyreader',
   storeName: 'progress',
 });
+
+/** 分类列表（含删除墓碑） */
+export const collectionsStore = localforage.createInstance({
+  name: 'dailyreader',
+  storeName: 'collections',
+});
+
+/** 书签与划线，整库一份 */
+export const marksStore = localforage.createInstance({
+  name: 'dailyreader',
+  storeName: 'marks',
+});
+
+const MARKS_KEY = 'all';
+const COLLECTIONS_KEY = 'all';
 
 export async function getAllBooks(): Promise<BookMeta[]> {
   const list: BookMeta[] = [];
@@ -72,6 +93,34 @@ export async function getAllProgressLocal(): Promise<
     if (v) out[k] = v;
   });
   return out;
+}
+
+export async function listCachedBookIds(): Promise<string[]> {
+  const keys = await filesStore.keys();
+  return keys.map(String);
+}
+
+export async function getAllCollections(): Promise<Collection[]> {
+  const list =
+    (await collectionsStore.getItem<Collection[]>(COLLECTIONS_KEY)) ?? [];
+  return [...list].sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function saveAllCollections(list: Collection[]): Promise<void> {
+  await collectionsStore.setItem(COLLECTIONS_KEY, list);
+}
+
+export async function getMarksFile(): Promise<MarksFile> {
+  const file = await marksStore.getItem<MarksFile>(MARKS_KEY);
+  if (!file) return emptyMarks();
+  return {
+    bookmarks: file.bookmarks ?? [],
+    highlights: file.highlights ?? [],
+  };
+}
+
+export async function saveMarksFile(file: MarksFile): Promise<void> {
+  await marksStore.setItem(MARKS_KEY, file);
 }
 
 export async function storageUsage(): Promise<{ usage: number; quota: number }> {

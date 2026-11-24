@@ -1,5 +1,7 @@
 import type {
   BookMeta,
+  Collection,
+  MarksFile,
   ReadingProgress,
 } from '../types';
 import type { SyncProvider } from './SyncProvider';
@@ -46,6 +48,18 @@ export class ServerSyncProvider implements SyncProvider {
     return { ok: false, message: '云服务器后端尚未启用（Phase 4）' };
   }
   async ensureRepo(): Promise<void> {
+    this.unsupported();
+  }
+  async pullCollections(): Promise<Collection[] | null> {
+    this.unsupported();
+  }
+  async pushCollections(): Promise<void> {
+    this.unsupported();
+  }
+  async pullMarks(): Promise<MarksFile | null> {
+    this.unsupported();
+  }
+  async pushMarks(): Promise<void> {
     this.unsupported();
   }
 }

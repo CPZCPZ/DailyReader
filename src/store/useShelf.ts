@@ -1,17 +1,21 @@
 import { create } from 'zustand';
-import type { BookMeta, BookFormat, ReadingProgress } from '../types';
+import type { BookMeta, BookFormat, Collection, ReadingProgress } from '../types';
 import { detectFormat, newId } from '../types';
 import { MAX_BOOK_BYTES } from '../sync/GitHubSyncProvider';
 import { getSync } from '../sync';
 import {
   deleteBookLocal,
   getAllBooks,
+  getAllCollections,
   getBookFile,
+  listCachedBookIds,
+  saveAllCollections,
   saveBookFile,
   saveBookMeta,
 } from '../storage/db';
+import { tombstoneBookMarks } from '../storage/marks';
 import { extractImportExtras } from '../readers/covers';
-import { removeBookEverywhere } from '../sync/orchestrator';
+import { removeBookEverywhere, scheduleSync } from '../sync/orchestrator';
 
 interface ImportResult {
   added: BookMeta[];
@@ -20,6 +24,9 @@ interface ImportResult {
 
 interface ShelfState {
   books: BookMeta[];
+  collections: Collection[];
+  cachedIds: string[];
+  downloadingId: string | null;
   loaded: boolean;
   load: () => Promise<void>;
   importFiles: (files: File[]) => Promise<ImportResult>;
@@ -28,15 +35,28 @@ interface ShelfState {
   setProgress: (id: string, p: ReadingProgress) => Promise<void>;
   markSynced: (id: string) => Promise<void>;
   replaceAll: (books: BookMeta[]) => Promise<void>;
+  createCollection: (name: string) => Promise<void>;
+  renameCollection: (id: string, name: string) => Promise<void>;
+  deleteCollection: (id: string) => Promise<void>;
+  moveBook: (id: string, collectionId: string | null) => Promise<void>;
+  noteCached: (id: string) => void;
+  noteDownloading: (id: string | null) => void;
 }
 
 export const useShelf = create<ShelfState>((set, get) => ({
   books: [],
+  collections: [],
+  cachedIds: [],
+  downloadingId: null,
   loaded: false,
 
   load: async () => {
-    const books = await getAllBooks();
-    set({ books, loaded: true });
+    const [books, collections, cachedIds] = await Promise.all([
+      getAllBooks(),
+      getAllCollections(),
+      listCachedBookIds(),
+    ]);
+    set({ books, collections, cachedIds, loaded: true });
   },
 
   importFiles: async (files) => {
@@ -97,6 +117,7 @@ export const useShelf = create<ShelfState>((set, get) => ({
   remove: async (id) => {
     const meta = get().books.find((b) => b.id === id);
     if (meta) await removeBookEverywhere(meta);
+    await tombstoneBookMarks(id);
     set({ books: get().books.filter((b) => b.id !== id) });
   },
 
@@ -140,6 +161,72 @@ export const useShelf = create<ShelfState>((set, get) => ({
     // 保留仍存在的本地文件
     set({ books });
   },
+
+  createCollection: async (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const now = Date.now();
+    const next: Collection = {
+      id: newId(),
+      name: trimmed,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const collections = [...get().collections, next];
+    set({ collections });
+    await saveAllCollections(collections);
+    scheduleSync();
+  },
+
+  renameCollection: async (id, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const now = Date.now();
+    const collections = get().collections.map((c) =>
+      c.id === id ? { ...c, name: trimmed, updatedAt: now } : c,
+    );
+    set({ collections });
+    await saveAllCollections(collections);
+    scheduleSync();
+  },
+
+  deleteCollection: async (id) => {
+    const now = Date.now();
+    const collections = get().collections.map((c) =>
+      c.id === id ? { ...c, deletedAt: now, updatedAt: now } : c,
+    );
+    const books = get().books.map((b) =>
+      b.collectionId === id
+        ? { ...b, collectionId: undefined, metaUpdatedAt: now }
+        : b,
+    );
+    set({ collections, books });
+    await saveAllCollections(collections);
+    for (const b of books) {
+      if (b.metaUpdatedAt === now) await saveBookMeta(b);
+    }
+    scheduleSync();
+  },
+
+  moveBook: async (id, collectionId) => {
+    const now = Date.now();
+    const books = get().books.map((b) =>
+      b.id === id
+        ? { ...b, collectionId: collectionId ?? undefined, metaUpdatedAt: now }
+        : b,
+    );
+    set({ books });
+    const meta = books.find((b) => b.id === id);
+    if (meta) await saveBookMeta(meta);
+    scheduleSync();
+  },
+
+  noteCached: (id) => {
+    if (get().cachedIds.includes(id)) return;
+    set({ cachedIds: [...get().cachedIds, id] });
+  },
+
+  noteDownloading: (id) => set({ downloadingId: id }),
 }));
 
 /** 读取书籍内容；本地无缓存时尝试从云端下载 */

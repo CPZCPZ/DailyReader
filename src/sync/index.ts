@@ -3,6 +3,9 @@ import { GitHubSyncProvider } from './GitHubSyncProvider';
 
 export type { SyncProvider } from './SyncProvider';
 export {
+  mergeById,
+  mergeCollections,
+  mergeMarks,
   mergeShelves,
   pickProgress,
 } from './merge';

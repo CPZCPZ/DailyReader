@@ -1,4 +1,9 @@
-import type { BookMeta, ReadingProgress } from '../types';
+import type {
+  BookMeta,
+  Collection,
+  MarksFile,
+  ReadingProgress,
+} from '../types';
 
 export interface ConnectionTestResult {
   ok: boolean;
@@ -39,6 +44,12 @@ export interface SyncProvider {
   pullAllProgress(): Promise<Record<string, ReadingProgress>>;
   /** 推送单本进度；远端较新则跳过并返回 false */
   pushProgress(bookId: string, p: ReadingProgress): Promise<boolean>;
+
+  pullCollections(): Promise<Collection[] | null>;
+  pushCollections(items: Collection[]): Promise<void>;
+
+  pullMarks(): Promise<MarksFile | null>;
+  pushMarks(marks: MarksFile): Promise<void>;
 }
 
 export interface SyncConfig {

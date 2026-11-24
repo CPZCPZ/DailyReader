@@ -2,15 +2,11 @@ import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { ScrolledHtmlReader } from './ScrolledHtmlReader';
 import { Loading } from './Loading';
-import type { ReaderProps } from './types';
+import { readerExtras, type ReaderProps } from './types';
 
 /** DOCX 阅读器：mammoth 转 HTML（图片内联为 dataURL），DOMPurify 清洗后滚动阅读 */
-export default function DocxReader({
-  data,
-  initialProgress,
-  settings,
-  onProgress,
-}: ReaderProps) {
+export default function DocxReader(props: ReaderProps) {
+  const { data, initialProgress, settings, onProgress } = props;
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +50,7 @@ export default function DocxReader({
       onScrollPercent={(percent) =>
         onProgress({ type: 'percent', value: percent, percent })
       }
+      {...readerExtras(props)}
     />
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { mergeShelves, pickProgress } from '../merge';
-import type { BookMeta, ReadingProgress } from '../../types';
+import { mergeCollections, mergeMarks, mergeShelves, pickProgress } from '../merge';
+import type { BookMeta, Bookmark, Collection, Highlight, ReadingProgress } from '../../types';
 
 function book(p: Partial<BookMeta> & { id: string }): BookMeta {
   return {
@@ -81,10 +81,104 @@ describe('mergeShelves', () => {
     expect(merged.map((b) => b.id)).toEqual(['b']);
   });
 
+  it('分类归属看 metaUpdatedAt，阅读进度仍取较新的一方', () => {
+    const local = book({
+      id: 'a',
+      collectionId: 'shelf-local',
+      metaUpdatedAt: 50,
+      progress: prog(1, 10),
+    });
+    const remote = book({
+      id: 'a',
+      collectionId: 'shelf-remote',
+      metaUpdatedAt: 10,
+      progress: prog(99, 80),
+    });
+    const { merged } = mergeShelves([local], [remote]);
+    expect(merged[0].progress?.updatedAt).toBe(99);
+    expect(merged[0].collectionId).toBe('shelf-local');
+    expect(merged[0].metaUpdatedAt).toBe(50);
+  });
+
   it('结果按 addedAt 倒序', () => {
     const a = book({ id: 'a', addedAt: 1 });
     const b = book({ id: 'b', addedAt: 2 });
     const { merged } = mergeShelves([a], [b]);
     expect(merged.map((m) => m.id)).toEqual(['b', 'a']);
+  });
+});
+
+function collection(id: string, updatedAt: number, extra: Partial<Collection> = {}): Collection {
+  return { id, name: id, createdAt: updatedAt, updatedAt, ...extra };
+}
+
+describe('mergeCollections', () => {
+  it('并集，updatedAt 新者胜出，时间相同保留本地', () => {
+    const local = [collection('a', 2, { name: '本地' }), collection('b', 5, { name: '同刻本地' })];
+    const remote = [collection('a', 1, { name: '远端' }), collection('b', 5, { name: '同刻远端' }), collection('c', 3)];
+    const merged = mergeCollections(local, remote);
+    expect(merged.find((c) => c.id === 'a')?.name).toBe('本地');
+    expect(merged.find((c) => c.id === 'b')?.name).toBe('同刻本地');
+    expect(merged.map((c) => c.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('删除墓碑若更新则保留，避免另一台设备把分类加回来', () => {
+    const local = [collection('a', 10, { deletedAt: 10 })];
+    const remote = [collection('a', 4, { name: '还在' })];
+    const merged = mergeCollections(local, remote);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].deletedAt).toBe(10);
+  });
+});
+
+function bookmark(id: string, updatedAt: number, extra: Partial<Bookmark> = {}): Bookmark {
+  return {
+    id,
+    bookId: 'book',
+    label: id,
+    locator: { type: 'percent', value: 1 },
+    createdAt: updatedAt,
+    updatedAt,
+    ...extra,
+  };
+}
+
+function highlight(id: string, updatedAt: number, extra: Partial<Highlight> = {}): Highlight {
+  return {
+    id,
+    bookId: 'book',
+    color: 'yellow',
+    text: id,
+    locator: { type: 'percent', value: 1, quote: id },
+    createdAt: updatedAt,
+    updatedAt,
+    ...extra,
+  };
+}
+
+describe('mergeMarks', () => {
+  it('书签和划线各自按条目合并，不整份覆盖', () => {
+    const merged = mergeMarks(
+      {
+        bookmarks: [bookmark('b1', 2, { label: '新' })],
+        highlights: [highlight('h1', 1, { text: '旧划线' })],
+      },
+      {
+        bookmarks: [bookmark('b1', 1, { label: '旧' }), bookmark('b2', 3)],
+        highlights: [highlight('h1', 5, { text: '新划线' }), highlight('h2', 4)],
+      },
+    );
+    expect(merged.bookmarks.map((b) => b.id)).toEqual(['b2', 'b1']);
+    expect(merged.bookmarks.find((b) => b.id === 'b1')?.label).toBe('新');
+    expect(merged.highlights.find((h) => h.id === 'h1')?.text).toBe('新划线');
+    expect(merged.highlights.map((h) => h.id).sort()).toEqual(['h1', 'h2']);
+  });
+
+  it('较新的删除墓碑会盖过另一端仍存在的划线', () => {
+    const merged = mergeMarks(
+      { bookmarks: [], highlights: [highlight('h1', 8, { deletedAt: 8 })] },
+      { bookmarks: [], highlights: [highlight('h1', 2, { text: '还在' })] },
+    );
+    expect(merged.highlights[0].deletedAt).toBe(8);
   });
 });

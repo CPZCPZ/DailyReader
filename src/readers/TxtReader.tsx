@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import chardet from 'chardet';
 import DOMPurify from 'dompurify';
 import { ScrolledHtmlReader } from './ScrolledHtmlReader';
-import type { ReaderProps } from './types';
+import { readerExtras, type ReaderProps } from './types';
 import { Loading } from './Loading';
 
 function escapeHtml(s: string): string {
@@ -38,12 +38,11 @@ export function decodeText(bytes: Uint8Array): string {
 }
 
 /** TXT 阅读器：编码检测 + 段落化滚动阅读 */
-export default function TxtReader({
-  data,
-  initialProgress,
-  settings,
-  onProgress,
-}: ReaderProps) {
+const CHAPTER =
+  /^(第[0-9０-９一二三四五六七八九十百千零〇两]+[章节回部卷集]|chapter\s+\d+|CHAPTER\s+\d+)/;
+
+export default function TxtReader(props: ReaderProps) {
+  const { data, initialProgress, settings, onProgress } = props;
   const [html, setHtml] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,7 +52,11 @@ export default function TxtReader({
       .split(/\n{2,}/)
       .map((p) => p.trim())
       .filter(Boolean)
-      .map((p) => `<p>${escapeHtml(p).replaceAll('\n', '<br/>')}</p>`)
+      .map((p) => {
+        const body = escapeHtml(p).replaceAll('\n', '<br/>');
+        const first = p.split('\n')[0]?.trim() ?? '';
+        return CHAPTER.test(first) ? `<h2>${body}</h2>` : `<p>${body}</p>`;
+      })
       .join('\n');
     setHtml(DOMPurify.sanitize(paragraphs));
   }, [data]);
@@ -70,6 +73,7 @@ export default function TxtReader({
       onScrollPercent={(percent) =>
         onProgress({ type: 'percent', value: percent, percent })
       }
+      {...readerExtras(props)}
     />
   );
 }

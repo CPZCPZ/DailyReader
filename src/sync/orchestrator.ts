@@ -2,14 +2,25 @@ import type { BookMeta, ReadingProgress } from '../types';
 import {
   deleteBookLocal,
   getAllBooks,
+  getAllCollections,
   getAllProgressLocal,
   getBookFile,
+  getMarksFile,
   getProgressLocal,
+  saveAllCollections,
+  saveBookFile,
   saveBookMeta,
+  saveMarksFile,
   saveProgressLocal,
 } from '../storage/db';
-import { getSync } from './index';
-import { mergeShelves, pickProgress } from './merge';
+import { getSync, isSyncConfigured } from './index';
+import {
+  mergeCollections,
+  mergeMarks,
+  mergeShelves,
+  normalizeMarks,
+  pickProgress,
+} from './merge';
 import { friendlyError } from './GitHubSyncProvider';
 import { useSettings } from '../store/useSettings';
 
@@ -17,12 +28,23 @@ export interface SyncResult {
   ok: boolean;
   message: string;
   uploaded?: number;
+  downloaded?: number;
   downloadedMeta?: number;
   removed?: number;
 }
 
+export interface SyncDetail {
+  /** 正在下载的书籍；null 表示当前没有下载 */
+  downloadingId?: string | null;
+  /** 刚缓存完成的书籍 */
+  cachedId?: string;
+}
+
 /** 同步阶段回调（页面展示进度用） */
-export type SyncProgress = (stage: string) => void;
+export type SyncProgress = (stage: string, detail?: SyncDetail) => void;
+
+const listeners = new Set<SyncProgress>();
+let inflight: Promise<SyncResult> | null = null;
 
 /**
  * 整书架同步：
@@ -32,9 +54,54 @@ export type SyncProgress = (stage: string) => void;
  * 3. 推送合并后的书架
  * 单本书上传失败不中断整轮，汇总到结果。
  */
-export async function syncNow(
+export function syncNow(
   onProgress: SyncProgress = () => {},
 ): Promise<SyncResult> {
+  listeners.add(onProgress);
+  if (!inflight) {
+    const emit: SyncProgress = (stage, detail) => {
+      for (const listener of [...listeners]) listener(stage, detail);
+    };
+    inflight = runSync(emit).finally(() => {
+      inflight = null;
+      listeners.clear();
+    });
+  }
+  return inflight.finally(() => {
+    listeners.delete(onProgress);
+  });
+}
+
+let scheduleTimer: ReturnType<typeof setTimeout> | null = null;
+let resyncAfter = false;
+
+/** 本地分类 / 书签 / 划线变化后，稍等再做一轮全量同步。 */
+export function scheduleSync(delay = 4000): void {
+  if (!isSyncConfigured()) return;
+  if (scheduleTimer) clearTimeout(scheduleTimer);
+  scheduleTimer = setTimeout(() => {
+    scheduleTimer = null;
+    const run = () => {
+      void syncNow().finally(() => {
+        if (!resyncAfter) return;
+        resyncAfter = false;
+        run();
+      });
+    };
+    if (inflight) {
+      resyncAfter = true;
+      void inflight.finally(() => {
+        if (!resyncAfter) return;
+        resyncAfter = false;
+        run();
+      });
+      return;
+    }
+    run();
+  }, delay);
+}
+
+async function runSync(onProgress: SyncProgress): Promise<SyncResult> {
   const provider = getSync();
   if (!provider) return { ok: false, message: '请先在设置页配置 GitHub 同步' };
 
@@ -47,7 +114,23 @@ export async function syncNow(
     const remoteShelf = (await provider.pullShelf()) ?? [];
     const { merged, remoteDeletedIds } = mergeShelves(localBooks, remoteShelf);
 
-    // 应用远端删除
+    // 应用远端删除，并给这本书的书签/划线打墓碑
+    if (remoteDeletedIds.length) {
+      const now = Date.now();
+      const marks = await getMarksFile();
+      const drop = <T extends { bookId: string; deletedAt?: number; updatedAt: number }>(
+        items: T[],
+      ) =>
+        items.map((item) =>
+          remoteDeletedIds.includes(item.bookId) && !item.deletedAt
+            ? { ...item, deletedAt: now, updatedAt: now }
+            : item,
+        );
+      await saveMarksFile({
+        bookmarks: drop(marks.bookmarks),
+        highlights: drop(marks.highlights),
+      });
+    }
     for (const id of remoteDeletedIds) {
       await deleteBookLocal(id);
     }
@@ -104,10 +187,51 @@ export async function syncNow(
       await saveBookMeta(b);
     }
 
+    onProgress('合并分类…');
+    const remoteCollections = (await provider.pullCollections()) ?? [];
+    const localCollections = await getAllCollections();
+    const collections = mergeCollections(localCollections, remoteCollections);
+    await saveAllCollections(collections);
+    await provider.pushCollections(collections);
+
+    onProgress('合并书签与划线…');
+    const remoteMarks = normalizeMarks(await provider.pullMarks());
+    const localMarks = await getMarksFile();
+    const marks = mergeMarks(localMarks, remoteMarks);
+    await saveMarksFile(marks);
+    await provider.pushMarks(marks);
+
+    let downloaded = 0;
+    const missing: BookMeta[] = [];
+    for (const book of mergedForPush) {
+      if (await getBookFile(book.id)) continue;
+      missing.push(book);
+    }
+    for (let i = 0; i < missing.length; i++) {
+      const book = missing[i];
+      onProgress(`下载《${book.title}》（${i + 1}/${missing.length}）…`, {
+        downloadingId: book.id,
+      });
+      try {
+        const file = await provider.downloadBook(book);
+        await saveBookFile(book.id, file);
+        downloaded++;
+        onProgress(`下载《${book.title}》（${i + 1}/${missing.length}）…`, {
+          downloadingId: null,
+          cachedId: book.id,
+        });
+      } catch (err) {
+        console.warn(`《${book.title}》下载失败`, err);
+        failedMsgs.push(`《${book.title}》下载：${friendlyError(err)}`);
+        onProgress(`下载《${book.title}》失败`, { downloadingId: null });
+      }
+    }
+
     useSettings.getState().setLastSyncAt(Date.now());
 
     const parts = [
       `上传 ${uploaded} 本`,
+      downloaded ? `下载 ${downloaded} 本` : '',
       remoteDeletedIds.length ? `远端删除 ${remoteDeletedIds.length} 本` : '',
       `进度 ${shelfIds.size} 本已对齐`,
     ].filter(Boolean);
@@ -116,6 +240,7 @@ export async function syncNow(
         ok: false,
         message: `同步部分完成：${parts.join('，')}。失败 ${failedMsgs.length} 本：${failedMsgs.join('；')}`,
         uploaded,
+        downloaded,
         removed: remoteDeletedIds.length,
       };
     }
@@ -123,6 +248,7 @@ export async function syncNow(
       ok: true,
       message: `同步完成：${parts.join('，')}`,
       uploaded,
+      downloaded,
       removed: remoteDeletedIds.length,
     };
   } catch (err) {

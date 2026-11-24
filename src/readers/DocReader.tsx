@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { ScrolledHtmlReader } from './ScrolledHtmlReader';
 import { extractDocText } from './docExtract';
-import type { ReaderProps } from './types';
+import { readerExtras, type ReaderProps } from './types';
 import { Loading } from './Loading';
 
 function escapeHtml(s: string): string {
@@ -95,6 +95,7 @@ export default function DocReader(props: ReaderProps) {
       onScrollPercent={(percent) =>
         onProgress({ type: 'percent', value: percent, percent })
       }
+      {...readerExtras(props)}
     />
   );
 }

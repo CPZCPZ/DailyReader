@@ -16,6 +16,10 @@ export default function PptxReader({
   bookId,
   initialProgress,
   onProgress,
+  jumpTo,
+  onToc,
+  onSurfaceClick,
+  onBindNav,
 }: ReaderProps) {
   const [state, setState] = useState<SlideState>({ urls: [], total: 0 });
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +27,13 @@ export default function PptxReader({
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const cbRef = useRef(onProgress);
   cbRef.current = onProgress;
+  const tocRef = useRef(onToc);
+  tocRef.current = onToc;
+  const navBindRef = useRef(onBindNav);
+  navBindRef.current = onBindNav;
+  const surfaceRef = useRef(onSurfaceClick);
+  surfaceRef.current = onSurfaceClick;
+  const slideRef = useRef(1);
   const restoredRef = useRef(false);
 
   // 解析并渲染
@@ -67,6 +78,7 @@ export default function PptxReader({
           }
         }
         if (best) {
+          slideRef.current = best.index + 1;
           cbRef.current({
             type: 'slide',
             value: best.index + 1,
@@ -79,6 +91,46 @@ export default function PptxReader({
     slideRefs.current.forEach((el) => el && observer.observe(el));
     return () => observer.disconnect();
   }, [state.urls, state.total]);
+
+  useEffect(() => {
+    if (!state.total) return;
+    tocRef.current?.(
+      Array.from({ length: state.total }, (_, i) => ({
+        id: `s${i + 1}`,
+        label: `幻灯片 ${i + 1}`,
+        locator: {
+          type: 'slide' as const,
+          value: i + 1,
+          percent: ((i + 1) / state.total) * 100,
+        },
+      })),
+    );
+  }, [state.total]);
+
+  useEffect(() => {
+    const go = (index: number) => {
+      const el = slideRefs.current[Math.max(0, index)];
+      el?.scrollIntoView({ block: 'start' });
+    };
+    navBindRef.current?.({
+      prev: () => go(slideRef.current - 2),
+      next: () => go(slideRef.current),
+    });
+    return () => navBindRef.current?.(null);
+  }, [state.total, state.urls.length]);
+
+  useEffect(() => {
+    if (!jumpTo) return;
+    const loc = jumpTo.locator;
+    const index =
+      loc.type === 'slide'
+        ? Number(loc.value) - 1
+        : loc.type === 'percent'
+          ? Math.round((Number(loc.value) / 100) * Math.max(0, state.total - 1))
+          : -1;
+    if (index < 0) return;
+    slideRefs.current[index]?.scrollIntoView({ block: 'start' });
+  }, [jumpTo, state.urls.length, state.total]);
 
   // 恢复进度：滚动到上次看到的幻灯片
   useEffect(() => {
@@ -103,7 +155,14 @@ export default function PptxReader({
   if (state.total === 0) return <Loading text="正在解析 PPT…" />;
 
   return (
-    <div ref={scrollRef} className="h-full overflow-y-auto bg-slate-100 p-3 dark:bg-slate-900 sm:p-6">
+    <div
+      ref={scrollRef}
+      className="h-full overflow-y-auto bg-slate-100 p-3 dark:bg-slate-900 sm:p-6"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('a, button')) return;
+        surfaceRef.current?.('center');
+      }}
+    >
       <div className="mx-auto flex max-w-4xl flex-col gap-4 pb-10">
         {state.urls.map((url, i) => (
           <div
