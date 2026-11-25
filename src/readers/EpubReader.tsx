@@ -13,6 +13,9 @@ const HL_FILL: Record<HighlightColor, string> = {
 
 function applyEpubTheme(r: Rendition, settings: ReaderSettings, dark: boolean) {
   const pad = 12 + settings.margin;
+  // 至少留出一行的底部缓冲。padding 简写会把 epub.js 的上下边距清成 0，
+  // 分页时最后一行会被 overflow:hidden 裁掉。
+  const lineBox = Math.ceil(settings.fontSize * settings.lineHeight);
   r.themes.register('main', {
     body: {
       'font-size': `${settings.fontSize}px !important`,
@@ -22,7 +25,11 @@ function applyEpubTheme(r: Rendition, settings: ReaderSettings, dark: boolean) {
         : 'inherit',
       background: dark ? '#1a202c !important' : '#ffffff !important',
       color: dark ? '#e2e8f0 !important' : '#1e293b !important',
-      padding: `0 ${pad}px !important`,
+      'box-sizing': 'border-box !important',
+      'padding-left': `${pad}px !important`,
+      'padding-right': `${pad}px !important`,
+      'padding-top': '16px !important',
+      'padding-bottom': `${Math.max(24, lineBox)}px !important`,
     },
     p: {
       'text-indent': settings.indent ? '2em !important' : '0 !important',
@@ -263,9 +270,27 @@ export default function EpubReader({
   }, [data, settings.epubFlow]);
 
   useEffect(() => {
+    const host = hostRef.current;
+    const r = renditionRef.current;
+    if (!host || !r) return;
+    const resize = () => {
+      const width = host.clientWidth;
+      const height = host.clientHeight;
+      if (width > 0 && height > 0) r.resize(width, height);
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [readyTick]);
+
+  useEffect(() => {
     const r = renditionRef.current;
     if (!r) return;
     applyEpubTheme(r, settings, resolveTheme(theme) === 'dark');
+    const host = hostRef.current;
+    if (host && host.clientWidth > 0 && host.clientHeight > 0) {
+      r.resize(host.clientWidth, host.clientHeight);
+    }
   }, [
     settings.fontSize,
     settings.lineHeight,

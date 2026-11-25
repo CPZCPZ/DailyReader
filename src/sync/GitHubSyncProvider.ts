@@ -31,6 +31,7 @@ export function bytesToBase64(
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
+  if (!b64) throw new Error('书籍内容为空，无法解码');
   const bin = atob(b64.replace(/\s/g, ''));
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -455,36 +456,40 @@ export class GitHubSyncProvider implements SyncProvider {
 
   async downloadBook(meta: BookMeta): Promise<ArrayBuffer> {
     const path = this.bookPath(meta);
-    // 小文件（≤1MB）Contents API 直接给 base64；大文件拿 sha 走 Blob API（≤100MB）
-    const { data } = await this.octo.rest.repos.getContent({
-      owner: this.o,
-      repo: this.r,
-      path,
-      ref: await this.branch(),
-    });
-    let b64: string;
-    if (!Array.isArray(data) && data.type === 'file') {
-      if (data.encoding === 'base64' && data.content) {
-        b64 = data.content;
-      } else if (data.sha) {
-        // >1MB：Contents API 不回传内容，用 blob sha 走 Git Blobs API（≤100MB）
-        const blob = await this.octo.rest.git.getBlob({
-          owner: this.o,
-          repo: this.r,
-          file_sha: data.sha,
-        });
-        b64 = blob.data.content;
-      } else {
-        throw new Error('远端书籍文件无法读取');
-      }
-    } else {
-      throw new Error('远端书籍文件不存在');
+    const branch = await this.branch();
+    // 大于 1MB 时 Contents JSON 不带 content，再去读 blob 也会是空的。
+    // raw 媒体类型直接返回文件字节，私有仓库在 100MB 内都适用。
+    const encodedPath = path
+      .split('/')
+      .map((part) => encodeURIComponent(part))
+      .join('/');
+    const url =
+      `https://api.github.com/repos/${encodeURIComponent(this.o)}/` +
+      `${encodeURIComponent(this.r)}/contents/${encodedPath}` +
+      `?ref=${encodeURIComponent(branch)}`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${this.cfg.token}`,
+          Accept: 'application/vnd.github.raw',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+    } catch {
+      throw new Error('下载书籍失败：网络不可用');
     }
-    const bytes = base64ToBytes(b64);
-    return bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer;
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => '')).slice(0, 180);
+      const err = new Error(detail || `下载书籍失败（HTTP ${res.status}）`) as Error & {
+        status?: number;
+      };
+      err.status = res.status;
+      throw err;
+    }
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength === 0) throw new Error('远端书籍文件是空的');
+    return buf;
   }
 
   async deleteBook(meta: BookMeta): Promise<void> {

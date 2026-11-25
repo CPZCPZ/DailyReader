@@ -215,7 +215,7 @@ export default function ShelfPage() {
               {syncing
                 ? syncStage || '正在同步…'
                 : syncError
-                  ? syncError
+                  ? '同步未完成，原因见下方'
                   : lastSyncAt
                     ? `已同步 ${formatRelative(lastSyncAt)}`
                     : configured
@@ -235,6 +235,14 @@ export default function ShelfPage() {
           </Link>
         </div>
       </header>
+
+      {syncError && (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-100">
+          <p className="mx-auto max-w-5xl whitespace-pre-wrap break-words">
+            {syncError}
+          </p>
+        </div>
+      )}
 
       {!configured && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
